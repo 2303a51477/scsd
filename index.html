@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Simple Library Management (TDD-ready)</title>
+  <style>
+    :root{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;}
+    body{margin:0;background:#0f172a;color:#e6eef8;min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:32px}
+    .card{background:linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));padding:20px;border-radius:12px;box-shadow:0 6px 18px rgba(2,6,23,0.6);width:100%;max-width:980px}
+    header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+    h1{font-size:18px;margin:0}
+    .muted{opacity:0.7;font-size:13px}
+    .grid{display:grid;grid-template-columns:1fr 320px;gap:16px}
+    .form-row{display:flex;gap:8px;margin-bottom:8px}
+    input,select,button,textarea{background:#071233;border:1px solid rgba(255,255,255,0.06);color:inherit;padding:8px;border-radius:8px;font-size:14px}
+    button{cursor:pointer}
+    .book-list{max-height:520px;overflow:auto;padding-right:6px}
+    .book{display:flex;justify-content:space-between;gap:12px;padding:10px;border-radius:8px;margin-bottom:8px;background:rgba(255,255,255,0.01)}
+    .book .meta{display:flex;flex-direction:column}
+    small{opacity:0.75}
+    .pill{font-size:12px;padding:6px;border-radius:999px}
+    .available{background:rgba(34,197,94,0.14);color:#bbf7d0}
+    .borrowed{background:rgba(239,68,68,0.12);color:#fecaca}
+    footer{margin-top:12px;text-align:center;color:#a8b3c7;font-size:12px}
+    @media(max-width:880px){.grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <main class="card" role="main">
+    <header>
+      <div>
+        <h1>Library Management — Demo</h1>
+        <div class="muted">TDD-friendly single-file demo (localStorage)</div>
+      </div>
+      <div id="userArea" class="muted">Guest</div>
+    </header>
+
+    <section class="grid">
+      <section>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <strong>Books</strong>
+          <div class="muted">Total: <span id="totalCount">0</span></div>
+        </div>
+
+        <div class="book-list" id="bookList" aria-live="polite"></div>
+
+        <footer>
+          <small>Data stored in localStorage under key <code>lms_books</code>. This is a front-end demo.</small>
+        </footer>
+      </section>
+
+      <aside>
+        <div style="margin-bottom:12px">
+          <strong>Add / Edit Book</strong>
+          <div class="muted">Create a book record</div>
+        </div>
+        <form id="bookForm">
+          <input type="hidden" id="bookId" />
+          <div class="form-row">
+            <input id="title" placeholder="Title" required />
+          </div>
+          <div class="form-row">
+            <input id="author" placeholder="Author" required />
+          </div>
+          <div class="form-row">
+            <input id="year" placeholder="Year" type="number" min="1000" max="9999" />
+          </div>
+          <div class="form-row">
+            <select id="status">
+              <option value="available">Available</option>
+              <option value="borrowed">Borrowed</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <button type="submit">Save Book</button>
+            <button type="button" id="resetBtn">Reset</button>
+          </div>
+        </form>
+
+        <hr style="margin:12px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)" />
+
+        <div>
+          <strong>Quick Actions</strong>
+          <div class="form-row" style="flex-direction:column">
+            <button id="seedBtn" type="button">Seed Example Data</button>
+            <button id="clearBtn" type="button">Clear All Data</button>
+          </div>
+        </div>
+      </aside>
+    </section>
+  </main>
+
+  <script type="module">
+    /*
+      TDD-ready functions are exported at the bottom so they can be imported
+      into a test runner (Jest, Vitest). Keep logic here small and pure.
+    */
+
+    // Utilities & data layer (pure functions)
+    const STORAGE_KEY = 'lms_books';
+
+    export function saveBooks(books){
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(books || []));
+      return true;
+    }
+
+    export function loadBooks(){
+      try{
+        const raw = localStorage.getItem(STORAGE_KEY);
+        return raw ? JSON.parse(raw) : [];
+      }catch(e){
+        return [];
+      }
+    }
+
+    export function createBook({title,author,year,status='available',id}){
+      if(!title || !author) throw new Error('Title and author required');
+      return {id: id || String(Date.now()), title:title.trim(), author:author.trim(), year:year?Number(year):null, status};
+    }
+
+    export function addBook(book){
+      const books = loadBooks();
+      books.unshift(book);
+      saveBooks(books);
+      return books;
+    }
+
+    export function updateBook(id, attrs){
+      const books = loadBooks().map(b => b.id===id?{...b,...attrs}:b);
+      saveBooks(books);
+      return books;
+    }
+
+    export function deleteBook(id){
+      const books = loadBooks().filter(b=>b.id!==id);
+      saveBooks(books);
+      return books;
+    }
+
+    export function borrowBook(id, borrowerName="Unknown"){
+      const books = loadBooks().map(b=> b.id===id ? {...b, status:'borrowed', borrower:borrowerName, borrowedAt: new Date().toISOString()} : b);
+      saveBooks(books);
+      return books;
+    }
+
+    export function returnBook(id){
+      const books = loadBooks().map(b=> b.id===id ? (()=>{ const copy={...b}; delete copy.borrower; delete copy.borrowedAt; copy.status='available'; return copy})() : b);
+      saveBooks(books);
+      return books;
+    }
+
+    // UI wiring (non-exported; small glue)
+    const els = {
+      bookList: document.getElementById('bookList'),
+      totalCount: document.getElementById('totalCount'),
+      bookForm: document.getElementById('bookForm'),
+      title: document.getElementById('title'),
+      author: document.getElementById('author'),
+      year: document.getElementById('year'),
+      status: document.getElementById('status'),
+      bookId: document.getElementById('bookId'),
+      seedBtn: document.getElementById('seedBtn'),
+      clearBtn: document.getElementById('clearBtn'),
+      resetBtn: document.getElementById('resetBtn')
+    };
+
+    function render(){
+      const books = loadBooks();
+      els.bookList.innerHTML = '';
+      els.totalCount.textContent = books.length;
+      books.forEach(b => {
+        const item = document.createElement('div');
+        item.className = 'book';
+        item.innerHTML = `
+          <div class="meta">
+            <strong>${escapeHtml(b.title)}</strong>
+            <small>${escapeHtml(b.author)} ${b.year? '— '+b.year : ''}</small>
+            ${b.borrower? `<small>Borrower: ${escapeHtml(b.borrower)}</small>` : ''}
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end">
+            <span class="pill ${b.status==='available'? 'available':'borrowed'}">${b.status}</span>
+            <div style="margin-top:8px;display:flex;gap:8px">
+              <button data-action="edit" data-id="${b.id}">Edit</button>
+              ${b.status==='available'? `<button data-action="borrow" data-id="${b.id}">Borrow</button>` : `<button data-action="return" data-id="${b.id}">Return</button>`}
+              <button data-action="delete" data-id="${b.id}">Delete</button>
+            </div>
+          </div>
+        `;
+        els.bookList.appendChild(item);
+      })
+    }
+
+    function escapeHtml(s){
+      if(!s) return '';
+      return s.replace(/[&<>\"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":"&#39;"}[c]));
+    }
+
+    els.bookForm.addEventListener('submit', e=>{
+      e.preventDefault();
+      try{
+        const id = els.bookId.value || null;
+        const book = createBook({title: els.title.value, author: els.author.value, year: els.year.value, status: els.status.value, id});
+        if(id){
+          updateBook(id, book);
+        }else{
+          addBook(book);
+        }
+        resetForm(); render();
+      }catch(err){
+        alert(err.message);
+      }
+    });
+
+    els.bookList.addEventListener('click', e=>{
+      const btn = e.target.closest('button');
+      if(!btn) return;
+      const action = btn.dataset.action; const id = btn.dataset.id;
+      if(action==='edit'){
+        const book = loadBooks().find(b=>b.id===id);
+        if(book){ els.bookId.value=book.id; els.title.value=book.title; els.author.value=book.author; els.year.value=book.year||''; els.status.value=book.status||'available'; window.scrollTo({top:0,behavior:'smooth'}) }
+      }else if(action==='borrow'){
+        const name = prompt('Enter borrower name','Student');
+        borrowBook(id, name||'Student'); render();
+      }else if(action==='return'){
+        returnBook(id); render();
+      }else if(action==='delete'){
+        if(confirm('Delete book?')){ deleteBook(id); render(); }
+      }
+    });
+
+    els.seedBtn.addEventListener('click', ()=>{
+      const sample = [
+        createBook({title:'Clean Code', author:'Robert C. Martin', year:2008}),
+        createBook({title:'Introduction to Algorithms', author:'Cormen et al', year:2009}),
+        createBook({title:'Design Patterns', author:'Gamma et al', year:1994})
+      ];
+      saveBooks(sample); render();
+    });
+
+    els.clearBtn.addEventListener('click', ()=>{ if(confirm('Clear all data?')){ saveBooks([]); render(); }});
+    els.resetBtn.addEventListener('click', resetForm);
+
+    function resetForm(){ els.bookForm.reset(); els.bookId.value=''; }
+
+    // initial render
+    render();
+
+    // Expose functions to window for quick manual testing in console (optional)
+    window.__lms = {saveBooks,loadBooks,createBook,addBook,updateBook,deleteBook,borrowBook,returnBook};
+  </script>
+</body>
+</html>
